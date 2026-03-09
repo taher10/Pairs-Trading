@@ -64,6 +64,7 @@ class PairsStrategy:
 
         # Populated after calling fit()
         self.hedge_ratios: Optional[np.ndarray] = None
+        self.hedge_intercepts: Optional[np.ndarray] = None
         self.spread: Optional[np.ndarray] = None
         self.zscore: Optional[np.ndarray] = None
         self.positions: Optional[np.ndarray] = None
@@ -76,7 +77,7 @@ class PairsStrategy:
 
     def fit(self, prices1: np.ndarray, prices2: np.ndarray) -> "PairsStrategy":
         """Run the full strategy pipeline on raw price arrays."""
-        self.hedge_ratios = self._rolling_hedge_ratio(prices1, prices2)
+        self.hedge_ratios, self.hedge_intercepts = self._rolling_hedge_ratio(prices1, prices2)
         self.spread = self._compute_spread(prices1, prices2)
         self.zscore = self._compute_zscore(self.spread)
         self.positions = self._generate_positions(self.zscore)
@@ -90,26 +91,37 @@ class PairsStrategy:
 
     def _rolling_hedge_ratio(
         self, prices1: np.ndarray, prices2: np.ndarray
-    ) -> np.ndarray:
-        """Estimate hedge ratio via rolling OLS: prices1 ~ beta * prices2 (no intercept)."""
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Estimate hedge ratio via rolling OLS with intercept:
+            prices1 = alpha + beta * prices2 + epsilon
+
+        Including the intercept prevents the beta from absorbing the mean-level
+        difference between the two assets, which keeps the spread stationary.
+        Returns (beta array, alpha array).
+        """
         lookback = self.params.hedge_ratio_lookback
         n = len(prices1)
-        hedge_ratios = np.full(n, np.nan)
+        hedge_ratios    = np.full(n, np.nan)
+        hedge_intercepts = np.full(n, np.nan)
 
         for i in range(lookback, n):
             y = prices1[i - lookback : i]
-            X = prices2[i - lookback : i].reshape(-1, 1)
-            hedge_ratios[i] = sm.OLS(y, X, hasconst=False).fit().params[0]
+            X = sm.add_constant(prices2[i - lookback : i])  # [const, prices2]
+            result = sm.OLS(y, X).fit()
+            hedge_intercepts[i] = result.params[0]   # alpha (constant)
+            hedge_ratios[i]     = result.params[1]   # beta
 
         # Back-fill initial window with the first valid estimate
-        hedge_ratios[:lookback] = hedge_ratios[lookback]
-        return hedge_ratios
+        hedge_ratios[:lookback]     = hedge_ratios[lookback]
+        hedge_intercepts[:lookback] = hedge_intercepts[lookback]
+        return hedge_ratios, hedge_intercepts
 
     def _compute_spread(
         self, prices1: np.ndarray, prices2: np.ndarray
     ) -> np.ndarray:
-        """Spread = prices1 - hedge_ratio * prices2."""
-        return prices1 - self.hedge_ratios * prices2
+        """Spread = prices1 - (intercept + beta * prices2)."""
+        return prices1 - (self.hedge_intercepts + self.hedge_ratios * prices2)
 
     def _compute_zscore(self, spread: np.ndarray) -> np.ndarray:
         """Normalise the spread with a rolling mean and standard deviation."""

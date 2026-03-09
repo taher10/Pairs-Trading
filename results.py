@@ -114,13 +114,14 @@ class Backtester:
         """
         prices1 = self.data[self.ticker1].values.ravel().astype(float)
         prices2 = self.data[self.ticker2].values.ravel().astype(float)
+        dates   = self.data.index
 
         strategy = PairsStrategy(params).fit(prices1, prices2)
         pnl_test = strategy.pnl[self.testset]
 
         metrics = self._compute_metrics(pnl_test)
         self._print_summary(label, params, metrics)
-        chart_path = self._save_chart(strategy.spread, pnl_test, label)
+        chart_path = self._save_chart(strategy.spread, pnl_test, dates, label)
         print(f"  Chart saved  : {chart_path}")
 
         return metrics
@@ -150,26 +151,33 @@ class Backtester:
         print(f"  Total Return : {metrics['total_return']:.4f}")
         print("=" * 55)
 
-    def _save_chart(self, spread: np.ndarray, pnl_test: np.ndarray, label: str) -> Path:
+    def _save_chart(
+        self, spread: np.ndarray, pnl_test: np.ndarray, dates: pd.DatetimeIndex, label: str
+    ) -> Path:
         """Save a two-panel spread + cumulative PnL chart as a PNG."""
-        fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+        train_dates = dates[self.trainset]
+        test_dates  = dates[self.testset]
 
-        # Spread – train vs test
-        axes[0].plot(self.trainset, spread[self.trainset], label="Train", color="steelblue")
-        axes[0].plot(self.testset, spread[self.testset], label="Test", color="darkorange")
+        fig, axes = plt.subplots(2, 1, figsize=(14, 8))
+
+        # Spread – train vs test, both on a real date axis
+        axes[0].plot(train_dates, spread[self.trainset], label="Train", color="steelblue")
+        axes[0].plot(test_dates,  spread[self.testset],  label="Test",  color="darkorange")
+        axes[0].axhline(0, color="grey", linewidth=0.8, linestyle="--")
         axes[0].set_title(f"Spread Over Time  [{label}]")
-        axes[0].set_xlabel("Time Index")
-        axes[0].set_ylabel("Spread")
+        axes[0].set_ylabel("Spread (residual)")
         axes[0].legend()
         axes[0].grid(alpha=0.3)
+        fig.autofmt_xdate(rotation=30)
 
-        # Cumulative PnL on test set
-        axes[1].plot(np.nancumsum(pnl_test), label="Cumulative PnL (Test)", color="seagreen")
+        # Cumulative PnL on test set with real dates
+        axes[1].plot(test_dates, np.nancumsum(pnl_test), label="Cumulative PnL (Test)", color="seagreen")
+        axes[1].axhline(0, color="grey", linewidth=0.8, linestyle="--")
         axes[1].set_title(f"Test Set Cumulative PnL  [{label}]")
-        axes[1].set_xlabel("Time Index")
         axes[1].set_ylabel("Cumulative PnL")
         axes[1].legend()
         axes[1].grid(alpha=0.3)
+        fig.autofmt_xdate(rotation=30)
 
         plt.tight_layout()
         path = self.output_dir / f"{label.replace(' ', '_')}_chart.png"

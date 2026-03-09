@@ -6,10 +6,10 @@ Wires together data ingestion, strategy execution, and results reporting.
 
 Outputs (written to output/)
 -----------------------------
-  default_backtest_chart.png  – Spread + PnL chart for the default parameters
-  best_backtest_chart.png     – Spread + PnL chart for the best found parameters
-  results.xlsx                – Three sheets:
-                                  Default Backtest | Grid Search | Best Backtest
+  Baseline_Strategy_chart.png   – Spread + PnL chart for the baseline parameters
+  Optimised_Strategy_chart.png  – Spread + PnL chart for the best found parameters
+  results.xlsx                  – Three sheets:
+                                    Baseline Strategy | Grid Search | Optimised Strategy
 
 Run
 ---
@@ -69,30 +69,30 @@ def main() -> None:
         output_dir=OUTPUT_DIR,
     )
 
-    # ── 2. Default backtest ────────────────────────────────────────────────
+    # ── 2. Baseline strategy (fixed parameters) ──────────────────────────
     default_params  = StrategyParams()
-    default_metrics = backtester.run(default_params, label="Default Backtest")
-    default_df      = _metrics_to_df("Default", default_params, default_metrics)
+    default_metrics = backtester.run(default_params, label="Baseline Strategy")
+    default_df      = _metrics_to_df("Baseline Strategy", default_params, default_metrics)
 
     # ── 3. Grid search ─────────────────────────────────────────────────────
     optimizer  = ParameterOptimizer(backtester)
     best_params = optimizer.optimise()
     grid_df    = optimizer.results_dataframe()
 
-    # ── 4. Best-params backtest ────────────────────────────────────────────
-    best_metrics = backtester.run(best_params, label="Best Backtest")
-    best_df      = _metrics_to_df("Best", best_params, best_metrics)
+    # ── 4. Optimised strategy (best params from grid search) ──────────────
+    best_metrics = backtester.run(best_params, label="Optimised Strategy")
+    best_df      = _metrics_to_df("Optimised Strategy", best_params, best_metrics)
 
     # ── 5. Export to Excel ─────────────────────────────────────────────────
     excel_path = OUTPUT_DIR / "results.xlsx"
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-        default_df.to_excel(writer, sheet_name="Default Backtest", index=False)
-        grid_df.to_excel(writer, sheet_name="Grid Search",         index=False)
-        best_df.to_excel(writer, sheet_name="Best Backtest",       index=False)
+        default_df.to_excel(writer, sheet_name="Baseline Strategy",  index=False)
+        grid_df.to_excel(writer,    sheet_name="Grid Search",         index=False)
+        best_df.to_excel(writer,    sheet_name="Optimised Strategy",  index=False)
 
     print(f"\nAll outputs saved to {OUTPUT_DIR}/")
-    print(f"  {OUTPUT_DIR}/Default_Backtest_chart.png")
-    print(f"  {OUTPUT_DIR}/Best_Backtest_chart.png")
+    print(f"  {OUTPUT_DIR}/Baseline_Strategy_chart.png")
+    print(f"  {OUTPUT_DIR}/Optimised_Strategy_chart.png")
     print(f"  {excel_path}")
 
 
